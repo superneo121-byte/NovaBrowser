@@ -1,0 +1,81 @@
+name: Build NovaBrowser Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract NovaBrowser archive
+        run: |
+          ZIP_FILE=$(ls *.zip 2>/dev/null | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Error: No .zip file found in repository root."
+            ls -la
+            exit 1
+          fi
+          echo "Using archive: $ZIP_FILE"
+          rm -rf extracted project
+          mkdir -p extracted project
+          unzip -q "$ZIP_FILE" -d extracted
+
+          if [ -d "extracted/NovaBrowser/app" ]; then
+            cp -r extracted/NovaBrowser/. project/
+          elif [ -f "extracted/build.gradle" ] || [ -f "extracted/gradlew" ]; then
+            cp -r extracted/. project/
+          else
+            SUBDIR=$(find extracted -maxdepth 3 -name "build.gradle" -printf "%h\n" | head -n 1)
+            if [ -n "$SUBDIR" ]; then
+              cp -r "$SUBDIR"/. project/
+            else
+              echo "Error: Could not locate Android project root (build.gradle)."
+              exit 1
+            fi
+          fi
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build Debug APK
+        working-directory: project
+        run: |
+          chmod +x gradlew
+          set +e
+          ./gradlew assembleDebug --no-daemon > gradle_build.log 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "=== GRADLE & COMPILER ERRORS ==="
+            grep -E "(error:|Error:|FAILURE:|What went wrong:|Could not find|Could not resolve)" gradle_build.log | grep -vE '^\s*at ' | tail -n 35 || true
+            echo "=== LAST 45 LINES OF LOG ==="
+            tail -n 45 gradle_build.log || true
+            exit "$EXIT_CODE"
+          fi
+
+          echo "=== GENERATED APK FILES ==="
+          find app/build/outputs/apk -type f -name "*.apk" || true
+
+      - name: Upload Failure Log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaBrowser-Build-Log
+          path: project/gradle_build.log
+
+      - name: Upload APK Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaBrowser-Android-APK
+          path: project/app/build/outputs/apk/**/*.apk
