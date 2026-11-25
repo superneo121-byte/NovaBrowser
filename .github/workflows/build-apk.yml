@@ -56,10 +56,10 @@ jobs:
           set -e
 
           if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "=== GRADLE & COMPILER ERRORS ==="
-            grep -E "(error:|Error:|FAILURE:|What went wrong:|Could not find|Could not resolve)" gradle_build.log | grep -vE '^\s*at ' | tail -n 35 || true
-            echo "=== LAST 45 LINES OF LOG ==="
-            tail -n 45 gradle_build.log || true
+            echo "=== ROOT CAUSE (TOP OF LOG) ==="
+            head -n 45 gradle_build.log || true
+            echo "=== CAUSED BY & COMPILER ERRORS ==="
+            grep -E "(Caused by:|error:|Error:|FAILURE:|What went wrong:|Could not find|Could not resolve)" gradle_build.log | grep -vE '^\s*at ' | tail -n 35 || true
             exit "$EXIT_CODE"
           fi
 
